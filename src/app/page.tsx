@@ -1,100 +1,116 @@
 "use client";
 
-import Image from "next/image";
-import { ConnectButton } from "thirdweb/react";
-import thirdwebIcon from "@public/thirdweb.svg";
+import { useState, useEffect } from "react";
+import { getSocialProfiles, SocialProfile } from "thirdweb/social";
 import { client } from "./client";
+import { ENSCard } from "./components/ENSCard";
+import { FarcasterCard } from "./components/FarcasterCard";
+import { LensCard } from "./components/LensCard";
+import { CardSkeleton } from "./components/CardSkeleton";
+import { shortenAddress } from "thirdweb/utils";
+
+type FilterType = "all" | "ens" | "farcaster" | "lens";
+
+const isValidEthereumAddress = (address: string) => {
+  return /^0x[a-fA-F0-9]{40}$/.test(address);
+};
 
 export default function Home() {
+  const [searchInput, setSearchInput] = useState("");
+  const [searchedAddress, setSearchedAddress] = useState("");
+  const [userProfiles, setUserProfiles] = useState<SocialProfile[]>([]);
+  const [activeFilter, setActiveFilter] = useState<FilterType>("all");
+  const [hasSearched, setHasSearched] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isValidAddress, setIsValidAddress] = useState(false);
+
+  useEffect(() => {
+    setIsValidAddress(isValidEthereumAddress(searchInput));
+  }, [searchInput]);
+
+  const handleSearch = async () => {
+    if (!isValidAddress) return;
+    
+    setIsLoading(true);
+    setSearchedAddress(searchInput);
+    try {
+      const profiles = await getSocialProfiles({
+        address: searchInput,
+        client: client,
+      });
+      setUserProfiles(profiles);
+      setHasSearched(true);
+    } catch (error) {
+      console.error("Error fetching profiles:", error);
+    } finally {
+      setIsLoading(false);
+      setSearchInput("");
+    }
+  };
+
+  const filteredProfiles = userProfiles.filter(profile => 
+    activeFilter === "all" || profile.type === activeFilter
+  );
+
   return (
-    <main className="p-4 pb-10 min-h-[100vh] flex items-center justify-center container max-w-screen-lg mx-auto">
-      <div className="py-20">
-        <Header />
-
-        <div className="flex justify-center mb-20">
-          <ConnectButton
-            client={client}
-            appMetadata={{
-              name: "Example App",
-              url: "https://example.com",
-            }}
+    <main className="min-h-screen bg-base-200 flex flex-col items-center p-4">
+      <div className="text-center mb-8">
+        <h1 className="text-5xl font-bold mb-8 text-primary">FindMe Web3</h1>
+        
+        <div className="flex flex-row items-center justify-center mb-4">
+          <input
+            type="text"
+            placeholder="Enter wallet address"
+            className={`input input-bordered w-full max-w-xs mr-2 ${!isValidAddress && searchInput ? 'input-error' : ''}`}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            disabled={isLoading}
           />
+          <button 
+            className="btn btn-primary" 
+            onClick={handleSearch}
+            disabled={isLoading || !isValidAddress}
+          >
+            {isLoading ? "Searching..." : "Search"}
+          </button>
         </div>
+        {searchInput && !isValidAddress && (
+          <p className="text-error text-xs text-left">Please enter a valid Ethereum address</p>
+        )}
 
-        <ThirdwebResources />
+        {hasSearched && (
+          <>
+            <p className="text-sm mb-4">Search results for: {shortenAddress(searchedAddress)}</p>
+            <div className="tabs tabs-boxed">
+              {["all", "ens", "farcaster", "lens"].map((filter) => (
+                <a
+                  key={filter}
+                  className={`tab ${activeFilter === filter ? "tab-active" : ""}`}
+                  onClick={() => setActiveFilter(filter as FilterType)}
+                >
+                  {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                </a>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8 w-full">
+        {isLoading ? (
+          Array(3).fill(0).map((_, index) => <CardSkeleton key={index} />)
+        ) : hasSearched && filteredProfiles.length > 0 ? (
+          filteredProfiles.map((profile, index) => (
+            <div key={index} className="w-full h-full">
+              {profile.type === "ens" && <ENSCard profile={profile} />}
+              {profile.type === "farcaster" && <FarcasterCard profile={profile} />}
+              {profile.type === "lens" && <LensCard profile={profile} />}
+            </div>
+          ))
+        ) : hasSearched ? (
+          <p className="text-center text-gray-500 col-span-full">No profiles found for this address.</p>
+        ) : null}
       </div>
     </main>
-  );
-}
-
-function Header() {
-  return (
-    <header className="flex flex-col items-center mb-20 md:mb-20">
-      <Image
-        src={thirdwebIcon}
-        alt=""
-        className="size-[150px] md:size-[150px]"
-        style={{
-          filter: "drop-shadow(0px 0px 24px #a726a9a8)",
-        }}
-      />
-
-      <h1 className="text-2xl md:text-6xl font-semibold md:font-bold tracking-tighter mb-6 text-zinc-100">
-        thirdweb SDK
-        <span className="text-zinc-300 inline-block mx-1"> + </span>
-        <span className="inline-block -skew-x-6 text-blue-500"> Next.js </span>
-      </h1>
-
-      <p className="text-zinc-300 text-base">
-        Read the{" "}
-        <code className="bg-zinc-800 text-zinc-300 px-2 rounded py-1 text-sm mx-1">
-          README.md
-        </code>{" "}
-        file to get started.
-      </p>
-    </header>
-  );
-}
-
-function ThirdwebResources() {
-  return (
-    <div className="grid gap-4 lg:grid-cols-3 justify-center">
-      <ArticleCard
-        title="thirdweb SDK Docs"
-        href="https://portal.thirdweb.com/typescript/v5"
-        description="thirdweb TypeScript SDK documentation"
-      />
-
-      <ArticleCard
-        title="Components and Hooks"
-        href="https://portal.thirdweb.com/typescript/v5/react"
-        description="Learn about the thirdweb React components and hooks in thirdweb SDK"
-      />
-
-      <ArticleCard
-        title="thirdweb Dashboard"
-        href="https://thirdweb.com/dashboard"
-        description="Deploy, configure, and manage your smart contracts from the dashboard."
-      />
-    </div>
-  );
-}
-
-function ArticleCard(props: {
-  title: string;
-  href: string;
-  description: string;
-}) {
-  return (
-    <a
-      href={props.href + "?utm_source=next-template"}
-      target="_blank"
-      className="flex flex-col border border-zinc-800 p-4 rounded-lg hover:bg-zinc-900 transition-colors hover:border-zinc-700"
-    >
-      <article>
-        <h2 className="text-lg font-semibold mb-2">{props.title}</h2>
-        <p className="text-sm text-zinc-400">{props.description}</p>
-      </article>
-    </a>
   );
 }
